@@ -111,18 +111,21 @@ class AE_model(object):
 
 			self.loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.input_doc, logits=logits))
 
-	def train_model(self, learning_rate, epochs, batch_size, data_arr, data_len_arr, test_data_arr, test_data_len_arr):
+	def train_model(self, learning_rate, epochs, batch_size, data_arr, data_len_arr, test_data_arr, test_data_len_arr, max_gradient):
 
 		self.batch_size = batch_size
 		self.data_num = len(data_arr)
-
-		optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate).minimize(self.loss)
+		self.max_gradient = max_gradient
+		
 		feed_dict = {self.input_doc: data_arr, self.input_doc_len: data_len_arr}
 		test_feed_dict = {self.input_doc: test_data_arr, self.input_doc_len: test_data_len_arr}
 
 		batch_num = self.data_num // batch_size
 
 		with tf.Session(config = config) as self.sess:
+
+			optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate)
+			operation = self.clip_gradients(optimizer)
 			self.sess.run(tf.global_variables_initializer())
 
 			for epoch_idx in range(epochs):
@@ -131,10 +134,34 @@ class AE_model(object):
 				feed_dict = self.shuffle_dict(feed_dict)
 
 				for batch_idx in range(batch_num):
-					history = self.sess.run(optimizer, feed_dict = self.get_batch(feed_dict, batch_idx * batch_size))
+					if batch_idx % 10 == 0:
+						print ('training batch ', batch_idx)
 
-				print ('training loss: ', self.sess.run(self.loss, feed_dict = feed_dict))
-				print ('testing  loss: ', self.sess.run(self.loss, feed_dict = test_feed_dict))
+					history = self.sess.run(operation, self.get_batch(feed_dict, batch_idx * batch_size))
+
+				print ('evaluating...')
+				print ('training loss: ', self.run_by_batch_size(self.loss, feed_dict))
+				print ('testing  loss: ', self.run_by_batch_size(self.loss, test_feed_dict))
+
+	def run_by_batch_size(self, variable, feed_dict):
+
+		batch_num = len(feed_dict[list(feed_dict.keys())[0]]) // self.batch_size
+		sum_of_loss = 0
+		
+		for batch_idx in range(batch_num):
+			sum_of_loss += self.sess.run(variable, feed_dict = self.get_batch(feed_dict, batch_idx * self.batch_size))
+
+		return sum_of_loss / batch_num
+
+	def clip_gradients(self, optimizer):
+
+		params = tf.trainable_variables()
+		gradients = tf.gradients(self.loss, params)
+		clipped_gradients, _ = tf.clip_by_global_norm(gradients, self.max_gradient)
+
+		operation = optimizer.apply_gradients(zip(clipped_gradients, params))
+
+		return operation
 
 	def get_batch(self, dict, start_ind):
 
@@ -167,7 +194,7 @@ if __name__ == '__main__':
 
 	ae_model.build_model(doc_max_len = data_formater.doc_max_len, token_num = data_formater.token_num, embed_dims = 16, \
 			rnn_hidden_dims = 32, mid_dense_layers = 2)
-	
-	ae_model.train_model(learning_rate = 0.001, epochs = 1000, batch_size = 128, data_arr = data_formater.data_arr, \
+
+	ae_model.train_model(learning_rate = 0.01, epochs = 1000, batch_size = 128, data_arr = data_formater.data_arr, \
 			data_len_arr = data_formater.data_len_arr, test_data_arr = data_formater.data_arr, \
-			test_data_len_arr = data_formater.data_len_arr)
+			test_data_len_arr = data_formater.data_len_arr, max_gradient = 3.0)
