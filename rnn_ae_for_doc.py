@@ -111,7 +111,7 @@ class AE_model(object):
 
 			self.loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.input_doc, logits=logits))
 
-	def train_model(self, learning_rate, epochs, batch_size, data_arr, data_len_arr, test_data_arr, test_data_len_arr, max_gradient):
+	def train_model(self, learning_rate, epochs, batch_size, data_arr, data_len_arr, test_data_arr, test_data_len_arr, max_gradient, epoch_per_save, epoch_per_eval, model_file_name):
 
 		self.batch_size = batch_size
 		self.data_num = len(data_arr)
@@ -129,19 +129,23 @@ class AE_model(object):
 			self.sess.run(tf.global_variables_initializer())
 
 			for epoch_idx in range(epochs):
+				
 				print ('training epoch ', epoch_idx)
-
 				feed_dict = self.shuffle_dict(feed_dict)
 
 				for batch_idx in range(batch_num):
-					if batch_idx % 10 == 0:
-						print ('training batch ', batch_idx)
-
 					history = self.sess.run(operation, self.get_batch(feed_dict, batch_idx * batch_size))
 
-				print ('evaluating...')
-				print ('training loss: ', self.run_by_batch_size(self.loss, feed_dict))
-				print ('testing  loss: ', self.run_by_batch_size(self.loss, test_feed_dict))
+				if epoch_idx % epoch_per_eval == 0:
+					print ('evaluating...')
+					print ('training loss: ', self.run_by_batch_size(self.loss, feed_dict))
+					print ('testing  loss: ', self.run_by_batch_size(self.loss, test_feed_dict))
+
+				if epoch_idx % epoch_per_save == 0:
+					saver = tf.train.Saver()
+					saver.save(self.sess, model_file_name)
+
+					print ('model saved as ', model_file_name)
 
 	def run_by_batch_size(self, variable, feed_dict):
 
@@ -197,4 +201,5 @@ if __name__ == '__main__':
 
 	ae_model.train_model(learning_rate = 0.01, epochs = 1000, batch_size = 128, data_arr = data_formater.data_arr, \
 			data_len_arr = data_formater.data_len_arr, test_data_arr = data_formater.data_arr, \
-			test_data_len_arr = data_formater.data_len_arr, max_gradient = 3.0)
+			test_data_len_arr = data_formater.data_len_arr, max_gradient = 3.0, epoch_per_save = 10, epoch_per_eval = 5, \
+			model_file_name = './model_test.ckpt')
